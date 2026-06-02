@@ -12,6 +12,10 @@ class HpDaemon(ModuleBase):
     # _last_secure_time = 0
     low_hp_confirm_timer: Timer
 
+    # Maximum plausible HP drop per frame (combat is ~30fps, actual damage is gradual).
+    # Drops exceeding this threshold are treated as occlusion artifacts and rejected.
+    MAX_HP_DROP_PER_FRAME = 0.25
+
     @staticmethod
     def _calculate_hp(image, area, reverse=False, starter=2, prev_color=(239, 32, 33), threshold=30):
         """
@@ -59,8 +63,8 @@ class HpDaemon(ModuleBase):
 
     def _at_low_hp(self, image, pause=PAUSE):
         if pause == PAUSE:
-            self.attacker_hp = self._calculate_hp(image, area=ATTACKER_HP_AREA.area, reverse=True)
-            self.defender_hp = self._calculate_hp(image, area=DEFENDER_HP_AREA.area, reverse=False)
+            new_attacker = self._calculate_hp(image, area=ATTACKER_HP_AREA.area, reverse=True)
+            new_defender = self._calculate_hp(image, area=DEFENDER_HP_AREA.area, reverse=False)
         elif pause in [
             PAUSE_New,
             PAUSE_Iridescent_Fantasy,
@@ -81,12 +85,24 @@ class HpDaemon(ModuleBase):
             PAUSE_ElvenVine,
             PAUSE_GildedReverie,
         ]:
-            self.attacker_hp = self._calculate_hp(image, area=ATTACKER_HP_AREA_New.area, reverse=True)
-            self.defender_hp = self._calculate_hp(image, area=DEFENDER_HP_AREA_New.area, reverse=True)
+            new_attacker = self._calculate_hp(image, area=ATTACKER_HP_AREA_New.area, reverse=True)
+            new_defender = self._calculate_hp(image, area=DEFENDER_HP_AREA_New.area, reverse=True)
         else:
             logger.warning(f'_at_low_hp received unknown pause: {pause}')
-            self.attacker_hp = self._calculate_hp(image, area=ATTACKER_HP_AREA.area, reverse=True)
-            self.defender_hp = self._calculate_hp(image, area=DEFENDER_HP_AREA.area, reverse=False)
+            new_attacker = self._calculate_hp(image, area=ATTACKER_HP_AREA.area, reverse=True)
+            new_defender = self._calculate_hp(image, area=DEFENDER_HP_AREA.area, reverse=False)
+
+        # Reject implausible HP drops caused by character art occluding the bar.
+        # Real HP loss is gradual; a sudden >25% drop is an artifact.
+        if new_attacker < self.attacker_hp - self.MAX_HP_DROP_PER_FRAME:
+            logger.info(f'Attacker HP drop rejected: {self.attacker_hp:.0%} → {new_attacker:.0%} (occlusion)')
+            new_attacker = self.attacker_hp
+        if new_defender < self.defender_hp - self.MAX_HP_DROP_PER_FRAME:
+            logger.info(f'Defender HP drop rejected: {self.defender_hp:.0%} → {new_defender:.0%} (occlusion)')
+            new_defender = self.defender_hp
+
+        self.attacker_hp = new_attacker
+        self.defender_hp = new_defender
 
         # Opponent died or HP bar get covered
         if self.defender_hp < 0.01:
