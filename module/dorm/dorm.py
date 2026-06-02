@@ -242,6 +242,11 @@ class RewardDorm(UI):
 
         self.ensure_no_info_bar()
 
+        # If the quick-collect button is not visible, there is nothing to collect.
+        if not self.appear(DORM_QUICK_COLLECT, offset=(20, 20)):
+            logger.info('Dorm quick collect button not visible, nothing to collect')
+            return
+
         # Set a timer to avoid Alas failing to detect the info_bar by accident.
         timeout = Timer(1.5, count=3).start()
 
