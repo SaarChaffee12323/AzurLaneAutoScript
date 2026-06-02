@@ -532,20 +532,21 @@ class ResearchProject:
 
     def check_name(self, name):
         """
-        Apply OCR correction rules (from YAML config if available, else built-in).
+        Apply OCR correction rules from correction_rules.yaml.
 
         Args:
             name (str): Raw OCR result
 
         Returns:
-            str: Corrected name
+            str: Corrected name, or the original name if rules are unavailable.
         """
         rules = self._load_correction_rules()
 
         if rules:
             return self._check_name_from_config(name, rules)
         else:
-            return self._check_name_builtin(name)
+            logger.error('OCR correction rules unavailable — returning uncorrected name')
+            return name
 
     def _check_name_from_config(self, name, rules):
         """Apply rules from YAML configuration."""
@@ -602,44 +603,10 @@ class ResearchProject:
             if not excluded:
                 prefix = 'D'
 
+        # Strip stray 'I'/'1' chars that OCR sometimes attaches to prefix edges
+        prefix = prefix.strip('I1')
+
         return '-'.join([prefix, number, suffix])
-
-    def _check_name_builtin(self, name):
-        """Fallback: original hardcoded rules (kept for when YAML is unavailable)."""
-        name = name.strip('-')
-        name = name.replace('G-185', 'C-185').replace('D-T85', 'C-185')
-        if name == '316-MI':
-            name = 'E-315-MI'
-
-        parts = [p for p in name.split('-') if p]
-        if len(parts) == 3:
-            prefix, number, suffix = parts
-            number = number.replace('D', '0').replace('O', '0').replace('S', '5')
-            number = number.replace('316', '315')
-            if prefix == 'D' and number == '349' and self.raw_series == 5:
-                number = '319'
-            if prefix in ['I1', 'U']:
-                prefix = 'D'
-            prefix = prefix.strip('I1')
-            prefix = prefix.replace('LC', 'C')
-            suffix = suffix.replace('ML', 'MI').replace('MIL', 'MI').replace('M1', 'MI')
-            suffix = suffix.replace('0C', 'UL').replace('UC', 'UL')
-            suffix = suffix.replace('DC5', 'UL').replace('DC3', 'UL').replace('DC', 'UL')
-            suffix = suffix.replace('UL1', 'UL').replace('ULI', 'UL').replace('UL5', 'UL')
-            if suffix == 'U':
-                suffix = 'UL'
-            if prefix == 'B' and number in ResearchProject.D_PROJECT_NUMBERS:
-                if not (number == '397' and suffix == 'RF'):
-                    prefix = 'D'
-            if prefix == '' and number in ResearchProject.D_PROJECT_NUMBERS:
-                prefix = 'D'
-            if prefix == 'L' and number in ResearchProject.C_PROJECT_NUMBERS:
-                prefix = 'C'
-            return '-'.join([prefix, number, suffix])
-        elif len(parts) == 2:
-            if name[0].isalpha() and name[1].isdigit():
-                return self.check_name(f'{name[0]}-{name[1:]}')
-        return name
 
     def get_data(self, name, series):
         """
