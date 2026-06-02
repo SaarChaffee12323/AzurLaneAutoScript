@@ -255,227 +255,85 @@ class AzurLaneAutoScript:
             LoginHandler(self.config, device=self.device).app_start()
             UI(self.config, device=self.device).ui_goto_main()
 
-    def research(self):
-        from module.research.research import RewardResearch
-        RewardResearch(config=self.config, device=self.device).run()
+    # ---- Task dispatch factory ----
+    @staticmethod
+    def _task(module_path, class_name, method='run'):
+        """Return a task dispatcher that imports and calls *class_name*.*method*."""
+        def dispatch(self):
+            import importlib
+            mod = importlib.import_module(module_path)
+            cls = getattr(mod, class_name)
+            return getattr(cls(config=self.config, device=self.device), method)()
+        dispatch.__name__ = method
+        return dispatch
 
-    def commission(self):
-        from module.commission.commission import RewardCommission
-        RewardCommission(config=self.config, device=self.device).run()
+    # Simple tasks: Class(config, device).run()
+    research = _task('module.research.research', 'RewardResearch')
+    commission = _task('module.commission.commission', 'RewardCommission')
+    tactical = _task('module.tactical.tactical_class', 'RewardTacticalClass')
+    dorm = _task('module.dorm.dorm', 'RewardDorm')
+    meowfficer = _task('module.meowfficer.meowfficer', 'RewardMeowfficer')
+    guild = _task('module.guild.guild_reward', 'RewardGuild')
+    reward = _task('module.reward.reward', 'Reward')
+    awaken = _task('module.awaken.awaken', 'Awaken')
+    shop_frequent = _task('module.shop.shop_reward', 'RewardShop', 'run_frequent')
+    shop_once = _task('module.shop.shop_reward', 'RewardShop', 'run_once')
+    shipyard = _task('module.shipyard.shipyard_reward', 'RewardShipyard')
+    gacha = _task('module.gacha.gacha_reward', 'RewardGacha')
+    freebies = _task('module.freebies.freebies', 'Freebies')
+    minigame = _task('module.minigame.minigame', 'Minigame')
+    private_quarters = _task('module.private_quarters.private_quarters', 'PrivateQuarters')
+    daily = _task('module.daily.daily', 'Daily')
+    hard = _task('module.hard.hard', 'CampaignHard')
+    exercise = _task('module.exercise.exercise', 'Exercise')
+    sos = _task('module.sos.sos', 'CampaignSos')
+    war_archives = _task('module.war_archives.war_archives', 'WarArchives')
+    event_ab = _task('module.event.campaign_abcd', 'CampaignAB')
+    event_cd = _task('module.event.campaign_abcd', 'CampaignCD')
+    raid_daily = _task('module.raid.daily', 'RaidDaily')
+    event_sp = _task('module.event.campaign_sp', 'CampaignSP')
+    maritime_escort = _task('module.event.maritime_escort', 'MaritimeEscort')
+    event_a = _task('module.event.campaign_abcd', 'CampaignABCD')
+    event_b = event_a
+    event_c = event_a
+    event_d = event_a
+    raid = _task('module.raid.run', 'RaidRun')
+    hospital = _task('module.event_hospital.hospital', 'Hospital')
+    coalition = _task('module.coalition.coalition', 'Coalition')
+    coalition_sp = _task('module.coalition.coalition_sp', 'CoalitionSP')
+    opsi_ash_beacon = _task('module.os_ash.meta', 'OpsiAshBeacon')
 
-    def tactical(self):
-        from module.tactical.tactical_class import RewardTacticalClass
-        RewardTacticalClass(config=self.config, device=self.device).run()
+    # Opsi tasks: OSCampaignRun(config, device).opsi_XXX()
+    opsi_explore = _task('module.campaign.os_run', 'OSCampaignRun', 'opsi_explore')
+    opsi_shop = _task('module.campaign.os_run', 'OSCampaignRun', 'opsi_shop')
+    opsi_voucher = _task('module.campaign.os_run', 'OSCampaignRun', 'opsi_voucher')
+    opsi_daily = _task('module.campaign.os_run', 'OSCampaignRun', 'opsi_daily')
+    opsi_obscure = _task('module.campaign.os_run', 'OSCampaignRun', 'opsi_obscure')
+    opsi_month_boss = _task('module.campaign.os_run', 'OSCampaignRun', 'opsi_month_boss')
+    opsi_abyssal = _task('module.campaign.os_run', 'OSCampaignRun', 'opsi_abyssal')
+    opsi_archive = _task('module.campaign.os_run', 'OSCampaignRun', 'opsi_archive')
+    opsi_stronghold = _task('module.campaign.os_run', 'OSCampaignRun', 'opsi_stronghold')
+    opsi_meowfficer_farming = _task('module.campaign.os_run', 'OSCampaignRun', 'opsi_meowfficer_farming')
+    opsi_hazard1_leveling = _task('module.campaign.os_run', 'OSCampaignRun', 'opsi_hazard1_leveling')
+    opsi_cross_month = _task('module.campaign.os_run', 'OSCampaignRun', 'opsi_cross_month')
 
-    def dorm(self):
-        from module.dorm.dorm import RewardDorm
-        RewardDorm(config=self.config, device=self.device).run()
-
-    def meowfficer(self):
-        from module.meowfficer.meowfficer import RewardMeowfficer
-        RewardMeowfficer(config=self.config, device=self.device).run()
-
-    def guild(self):
-        from module.guild.guild_reward import RewardGuild
-        RewardGuild(config=self.config, device=self.device).run()
-
-    def reward(self):
-        from module.reward.reward import Reward
-        Reward(config=self.config, device=self.device).run()
-
-    def awaken(self):
-        from module.awaken.awaken import Awaken
-        Awaken(config=self.config, device=self.device).run()
-
-    def shop_frequent(self):
-        from module.shop.shop_reward import RewardShop
-        RewardShop(config=self.config, device=self.device).run_frequent()
-
-    def shop_once(self):
-        from module.shop.shop_reward import RewardShop
-        RewardShop(config=self.config, device=self.device).run_once()
-
-    def shipyard(self):
-        from module.shipyard.shipyard_reward import RewardShipyard
-        RewardShipyard(config=self.config, device=self.device).run()
-
-    def gacha(self):
-        from module.gacha.gacha_reward import RewardGacha
-        RewardGacha(config=self.config, device=self.device).run()
-
-    def freebies(self):
-        from module.freebies.freebies import Freebies
-        Freebies(config=self.config, device=self.device).run()
-
-    def minigame(self):
-        from module.minigame.minigame import Minigame
-        Minigame(config=self.config, device=self.device).run()
-
-    def private_quarters(self):
-        from module.private_quarters.private_quarters import PrivateQuarters
-        PrivateQuarters(config=self.config, device=self.device).run()
-
-    def daily(self):
-        from module.daily.daily import Daily
-        Daily(config=self.config, device=self.device).run()
-
-    def hard(self):
-        from module.hard.hard import CampaignHard
-        CampaignHard(config=self.config, device=self.device).run()
-
-    def exercise(self):
-        from module.exercise.exercise import Exercise
-        Exercise(config=self.config, device=self.device).run()
-
-    def sos(self):
-        from module.sos.sos import CampaignSos
-        CampaignSos(config=self.config, device=self.device).run()
-
-    def war_archives(self):
-        from module.war_archives.war_archives import CampaignWarArchives
-        CampaignWarArchives(config=self.config, device=self.device).run(
-            name=self.config.Campaign_Name, folder=self.config.Campaign_Event, mode=self.config.Campaign_Mode)
-
-    def raid_daily(self):
-        from module.raid.daily import RaidDaily
-        RaidDaily(config=self.config, device=self.device).run()
-
-    def event_a(self):
-        from module.event.campaign_abcd import CampaignABCD
-        CampaignABCD(config=self.config, device=self.device).run()
-
-    def event_b(self):
-        from module.event.campaign_abcd import CampaignABCD
-        CampaignABCD(config=self.config, device=self.device).run()
-
-    def event_c(self):
-        from module.event.campaign_abcd import CampaignABCD
-        CampaignABCD(config=self.config, device=self.device).run()
-
-    def event_d(self):
-        from module.event.campaign_abcd import CampaignABCD
-        CampaignABCD(config=self.config, device=self.device).run()
-
-    def event_sp(self):
-        from module.event.campaign_sp import CampaignSP
-        CampaignSP(config=self.config, device=self.device).run()
-
-    def maritime_escort(self):
-        from module.event.maritime_escort import MaritimeEscort
-        MaritimeEscort(config=self.config, device=self.device).run()
-
-    def opsi_ash_assist(self):
-        from module.os_ash.meta import AshBeaconAssist
-        AshBeaconAssist(config=self.config, device=self.device).run()
-
-    def opsi_ash_beacon(self):
-        from module.os_ash.meta import OpsiAshBeacon
-        OpsiAshBeacon(config=self.config, device=self.device).run()
-
-    def opsi_explore(self):
-        from module.campaign.os_run import OSCampaignRun
-        OSCampaignRun(config=self.config, device=self.device).opsi_explore()
-
-    def opsi_shop(self):
-        from module.campaign.os_run import OSCampaignRun
-        OSCampaignRun(config=self.config, device=self.device).opsi_shop()
-
-    def opsi_voucher(self):
-        from module.campaign.os_run import OSCampaignRun
-        OSCampaignRun(config=self.config, device=self.device).opsi_voucher()
-
-    def opsi_daily(self):
-        from module.campaign.os_run import OSCampaignRun
-        OSCampaignRun(config=self.config, device=self.device).opsi_daily()
-
-    def opsi_obscure(self):
-        from module.campaign.os_run import OSCampaignRun
-        OSCampaignRun(config=self.config, device=self.device).opsi_obscure()
-
-    def opsi_month_boss(self):
-        from module.campaign.os_run import OSCampaignRun
-        OSCampaignRun(config=self.config, device=self.device).opsi_month_boss()
-
-    def opsi_abyssal(self):
-        from module.campaign.os_run import OSCampaignRun
-        OSCampaignRun(config=self.config, device=self.device).opsi_abyssal()
-
-    def opsi_archive(self):
-        from module.campaign.os_run import OSCampaignRun
-        OSCampaignRun(config=self.config, device=self.device).opsi_archive()
-
-    def opsi_stronghold(self):
-        from module.campaign.os_run import OSCampaignRun
-        OSCampaignRun(config=self.config, device=self.device).opsi_stronghold()
-
-    def opsi_meowfficer_farming(self):
-        from module.campaign.os_run import OSCampaignRun
-        OSCampaignRun(config=self.config, device=self.device).opsi_meowfficer_farming()
-
-    def opsi_hazard1_leveling(self):
-        from module.campaign.os_run import OSCampaignRun
-        OSCampaignRun(config=self.config, device=self.device).opsi_hazard1_leveling()
-
-    def opsi_cross_month(self):
-        from module.campaign.os_run import OSCampaignRun
-        OSCampaignRun(config=self.config, device=self.device).opsi_cross_month()
-
-    def main(self):
+    # Campaign tasks: CampaignRun(config, device).run(name=..., folder=..., mode=...)
+    @staticmethod
+    def _campaign(self):
         from module.campaign.run import CampaignRun
         CampaignRun(config=self.config, device=self.device).run(
             name=self.config.Campaign_Name, folder=self.config.Campaign_Event, mode=self.config.Campaign_Mode)
 
-    def main2(self):
-        from module.campaign.run import CampaignRun
-        CampaignRun(config=self.config, device=self.device).run(
-            name=self.config.Campaign_Name, folder=self.config.Campaign_Event, mode=self.config.Campaign_Mode)
+    main = _campaign
+    main2 = _campaign
+    main3 = _campaign
+    event = _campaign
+    event2 = _campaign
+    c72_mystery_farming = _campaign
+    c122_medium_leveling = _campaign
+    c124_large_leveling = _campaign
 
-    def main3(self):
-        from module.campaign.run import CampaignRun
-        CampaignRun(config=self.config, device=self.device).run(
-            name=self.config.Campaign_Name, folder=self.config.Campaign_Event, mode=self.config.Campaign_Mode)
-
-    def event(self):
-        from module.campaign.run import CampaignRun
-        CampaignRun(config=self.config, device=self.device).run(
-            name=self.config.Campaign_Name, folder=self.config.Campaign_Event, mode=self.config.Campaign_Mode)
-
-    def event2(self):
-        from module.campaign.run import CampaignRun
-        CampaignRun(config=self.config, device=self.device).run(
-            name=self.config.Campaign_Name, folder=self.config.Campaign_Event, mode=self.config.Campaign_Mode)
-
-    def raid(self):
-        from module.raid.run import RaidRun
-        RaidRun(config=self.config, device=self.device).run()
-
-    def hospital(self):
-        from module.event_hospital.hospital import Hospital
-        Hospital(config=self.config, device=self.device).run()
-
-    def coalition(self):
-        from module.coalition.coalition import Coalition
-        Coalition(config=self.config, device=self.device).run()
-
-    def coalition_sp(self):
-        from module.coalition.coalition_sp import CoalitionSP
-        CoalitionSP(config=self.config, device=self.device).run()
-
-    def c72_mystery_farming(self):
-        from module.campaign.run import CampaignRun
-        CampaignRun(config=self.config, device=self.device).run(
-            name=self.config.Campaign_Name, folder=self.config.Campaign_Event, mode=self.config.Campaign_Mode)
-
-    def c122_medium_leveling(self):
-        from module.campaign.run import CampaignRun
-        CampaignRun(config=self.config, device=self.device).run(
-            name=self.config.Campaign_Name, folder=self.config.Campaign_Event, mode=self.config.Campaign_Mode)
-
-    def c124_large_leveling(self):
-        from module.campaign.run import CampaignRun
-        CampaignRun(config=self.config, device=self.device).run(
-            name=self.config.Campaign_Name, folder=self.config.Campaign_Event, mode=self.config.Campaign_Mode)
-
+    @staticmethod
     def gems_farming(self):
         from module.campaign.gems_farming import GemsFarming
         GemsFarming(config=self.config, device=self.device).run(
