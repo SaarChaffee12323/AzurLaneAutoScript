@@ -104,18 +104,22 @@ class RewardDorm(UI):
 
         return count
 
-    @Config.when(DEVICE_CONTROL_METHOD='minitouch')
-    def _dorm_feed_long_tap(self, button, count):
-        # Long tap to feed. This requires minitouch.
+    def _dorm_feed_long_tap_loop(self, button, count, on_start, on_iter, on_end):
+        """Core long-tap loop shared by all device control methods.
+
+        Args:
+            button: Food button to long-tap.
+            count: Food use count (for timeout estimation).
+            on_start: Callable(x, y) called once to initiate the touch.
+            on_iter: Callable(x, y) called each iteration to sustain the touch.
+            on_end: Callable(x, y) called once after the loop to release the touch.
+        """
         timeout = Timer(count // 5 + 5).start()
         x, y = random_rectangle_point(button.button)
-        builder = self.device.minitouch_builder
-        builder.down(x, y).commit()
-        builder.send()
+        on_start(x, y)
 
         while 1:
-            builder.move(x, y).commit().wait(10)
-            builder.send()
+            on_iter(x, y)
             self.device.screenshot()
 
             if not self._dorm_has_food(button) \
@@ -126,73 +130,45 @@ class RewardDorm(UI):
                 logger.warning('Wait dorm feed timeout')
                 break
 
-        builder.up().commit()
-        builder.send()
+        on_end(x, y)
+
+    @Config.when(DEVICE_CONTROL_METHOD='minitouch')
+    def _dorm_feed_long_tap(self, button, count):
+        builder = self.device.minitouch_builder
+        self._dorm_feed_long_tap_loop(
+            button, count,
+            on_start=lambda x, y: [builder.down(x, y).commit(), builder.send()],
+            on_iter=lambda x, y: [builder.move(x, y).commit().wait(10), builder.send()],
+            on_end=lambda x, y: [builder.up().commit(), builder.send()],
+        )
 
     @Config.when(DEVICE_CONTROL_METHOD='MaaTouch')
     def _dorm_feed_long_tap(self, button, count):
-        timeout = Timer(count // 5 + 5).start()
-        x, y = random_rectangle_point(button.button)
         builder = self.device.maatouch_builder
-        builder.down(x, y).commit()
-        builder.send()
-
-        while 1:
-            builder.move(x, y).commit().wait(10)
-            builder.send()
-            self.device.screenshot()
-
-            if not self._dorm_has_food(button) \
-                    or self.handle_info_bar() \
-                    or self.appear(POPUP_CONFIRM, offset=self._popup_offset):
-                break
-            if timeout.reached():
-                logger.warning('Wait dorm feed timeout')
-                break
-
-        builder.up().commit()
-        builder.send()
+        self._dorm_feed_long_tap_loop(
+            button, count,
+            on_start=lambda x, y: [builder.down(x, y).commit(), builder.send()],
+            on_iter=lambda x, y: [builder.move(x, y).commit().wait(10), builder.send()],
+            on_end=lambda x, y: [builder.up().commit(), builder.send()],
+        )
 
     @Config.when(DEVICE_CONTROL_METHOD='uiautomator2')
     def _dorm_feed_long_tap(self, button, count):
-        timeout = Timer(count // 5 + 5).start()
-        x, y = random_rectangle_point(button.button)
-        self.device.u2.touch.down(x, y)
-
-        while 1:
-            self.device.u2.touch.move(x, y)
-            time.sleep(.01)
-            self.device.screenshot()
-
-            if not self._dorm_has_food(button) \
-                    or self.handle_info_bar() \
-                    or self.appear(POPUP_CONFIRM, offset=self._popup_offset):
-                break
-            if timeout.reached():
-                logger.warning('Wait dorm feed timeout')
-                break
-
-        self.device.u2.touch.up(x, y)
+        self._dorm_feed_long_tap_loop(
+            button, count,
+            on_start=lambda x, y: self.device.u2.touch.down(x, y),
+            on_iter=lambda x, y: [self.device.u2.touch.move(x, y), time.sleep(.01)],
+            on_end=lambda x, y: self.device.u2.touch.up(x, y),
+        )
 
     @Config.when(DEVICE_CONTROL_METHOD='nemu_ipc')
     def _dorm_feed_long_tap(self, button, count):
-        timeout = Timer(count // 5 + 5).start()
-        x, y = random_rectangle_point(button.button)
-
-        while 1:
-            self.device.nemu_ipc.down(x, y)
-            time.sleep(.01)
-            self.device.screenshot()
-
-            if not self._dorm_has_food(button) \
-                    or self.handle_info_bar() \
-                    or self.appear(POPUP_CONFIRM, offset=self._popup_offset):
-                break
-            if timeout.reached():
-                logger.warning('Wait dorm feed timeout')
-                break
-
-        self.device.nemu_ipc.up()
+        self._dorm_feed_long_tap_loop(
+            button, count,
+            on_start=lambda x, y: None,
+            on_iter=lambda x, y: [self.device.nemu_ipc.down(x, y), time.sleep(.01)],
+            on_end=lambda x, y: self.device.nemu_ipc.up(),
+        )
 
     @Config.when(DEVICE_CONTROL_METHOD=None)
     def _dorm_feed_long_tap(self, button, count):
