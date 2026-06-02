@@ -227,7 +227,7 @@ class GuildOperations(GuildBase):
             self.device.drag(p1, p2, segments=2, shake=(0, 25), point_random=(0, 0, 0, 0), shake_random=(0, -5, 0, 5))
             # self.device.sleep(0.3)
 
-        logger.warning('Failed to find active operation dispatch')
+        logger.info('No active operation dispatch found')
         return False
 
     def _guild_operations_dispatch_enter(self, skip_first_screenshot=True):
@@ -559,7 +559,7 @@ class GuildOperations(GuildBase):
         if operations_mode == 0:
             pass
         elif operations_mode == 1:
-            self._guild_operations_dispatch()
+            result = self._guild_operations_dispatch()
         elif operations_mode == 2:
             if self._guild_operations_boss_available():
                 if self.config.GuildOperation_AttackBoss:
