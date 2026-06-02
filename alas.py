@@ -44,9 +44,13 @@ class AzurLaneAutoScript:
             logger.info(f'Loaded {len(self._circuit_breakers)} circuit breaker(s)')
 
     def _save_circuit_breaker(self, task, until):
-        """Save a circuit breaker entry to disk."""
-        import json
+        """Add or update a circuit breaker entry and persist to disk."""
         self._circuit_breakers[task] = until
+        self._write_circuit_breakers()
+
+    def _write_circuit_breakers(self):
+        """Persist current circuit breaker state to disk."""
+        import json
         path = self._circuit_breaker_path()
         raw = {k: v.isoformat() for k, v in self._circuit_breakers.items()}
         with open(path, 'w', encoding='utf-8') as f:
@@ -84,13 +88,7 @@ class AzurLaneAutoScript:
                     del self._circuit_breakers[task]
 
         if re_enabled:
-            self._save_circuit_breaker('_placeholder', datetime.now())  # trigger save by removing expired
-            # Actually just save what's left
-            import json
-            path = self._circuit_breaker_path()
-            raw = {k: v.isoformat() for k, v in self._circuit_breakers.items()}
-            with open(path, 'w', encoding='utf-8') as f:
-                json.dump(raw, f, ensure_ascii=False, indent=2)
+            self._write_circuit_breakers()
 
     @cached_property
     def config(self):
