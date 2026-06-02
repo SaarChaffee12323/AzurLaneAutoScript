@@ -13,6 +13,8 @@ dev_tools/debug_tools
 .idea
 /screenshots
 /campaign/test/
+# New web frontend (WIP, not ready for use)
+new_web/
 /toolkit
 *.lock
 config/reloadflag
