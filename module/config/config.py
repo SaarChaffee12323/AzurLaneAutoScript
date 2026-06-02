@@ -26,6 +26,7 @@ class Function:
         self.enable = deep_get(data, keys="Scheduler.Enable", default=False)
         self.command = deep_get(data, keys="Scheduler.Command", default="Unknown")
         self.next_run = deep_get(data, keys="Scheduler.NextRun", default=DEFAULT_TIME)
+        self.time_window = deep_get(data, keys="Scheduler.TimeWindow", default="")
 
     def __str__(self):
         enable = "Enable" if self.enable else "Disable"
@@ -199,6 +200,35 @@ class AzurLaneConfig(ConfigUpdater, ManualConfig, GeneratedConfig, ConfigWatcher
     def is_actual_task(self):
         return self.task.command.lower() not in ['alas', 'template']
 
+    @staticmethod
+    def _in_time_window(func) -> bool:
+        """Check if a task is within its configured time window.
+        Format: "HH:MM-HH:MM" e.g. "02:00-08:00"
+        Empty string means no restriction (always in window).
+        If the end time is earlier than start, it wraps around midnight.
+        """
+        window = getattr(func, 'time_window', '') or ''
+        if not window or window.strip() == '':
+            return True
+
+        try:
+            parts = window.split('-')
+            start_str, end_str = parts[0].strip(), parts[1].strip()
+            start_h, start_m = map(int, start_str.split(':'))
+            end_h, end_m = map(int, end_str.split(':'))
+
+            now = datetime.now().time()
+            start = now.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
+            end = now.replace(hour=end_h, minute=end_m, second=0, microsecond=0)
+
+            if start <= end:
+                return start <= now <= end
+            else:
+                # Wraps midnight (e.g., 22:00-06:00)
+                return now >= start or now <= end
+        except (ValueError, IndexError):
+            return True  # malformed window → allow
+
     def get_next_task(self):
         """
         Calculate tasks, set pending_task and waiting_task
@@ -212,6 +242,10 @@ class AzurLaneConfig(ConfigUpdater, ManualConfig, GeneratedConfig, ConfigWatcher
         for func in self.data.values():
             func = Function(func)
             if not func.enable:
+                continue
+            # Time window check: skip if outside allowed hours
+            if not self._in_time_window(func):
+                waiting.append(func)  # treat as waiting, not disabled
                 continue
             if not isinstance(func.next_run, datetime):
                 error.append(func)
@@ -584,6 +618,37 @@ class AzurLaneConfig(ConfigUpdater, ManualConfig, GeneratedConfig, ConfigWatcher
         else:
             logger.info(f"Task call: {task} (skipped because disabled by user)")
             return False
+
+    def task_disable(self, task):
+        """
+        Disable a task (set Scheduler.Enable = False).
+        Used by circuit breaker.
+
+        Args:
+            task (str): Task name
+        """
+        if deep_get(self.data, keys=f"{task}.Scheduler.NextRun", default=None) is None:
+            raise ScriptError(f"Task to disable: `{task}` does not exist in user config")
+
+        logger.info(f"Task disable: {task}")
+        self.modified[f"{task}.Scheduler.Enable"] = False
+        if self.auto_update:
+            self.update()
+
+    def task_enable(self, task):
+        """
+        Enable a task (set Scheduler.Enable = True).
+
+        Args:
+            task (str): Task name
+        """
+        if deep_get(self.data, keys=f"{task}.Scheduler.NextRun", default=None) is None:
+            raise ScriptError(f"Task to enable: `{task}` does not exist in user config")
+
+        logger.info(f"Task enable: {task}")
+        self.modified[f"{task}.Scheduler.Enable"] = True
+        if self.auto_update:
+            self.update()
 
     @staticmethod
     def task_stop(message=""):

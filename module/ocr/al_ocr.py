@@ -1,237 +1,185 @@
 import os
 
-import cv2
-import numpy as np
-from PIL import Image
-
-from module.exception import RequestHumanTakeover
 from module.logger import logger
+
+# ---- Local model paths (bundled with project, no network needed) ----
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_MODEL_DIR = os.path.join(_PROJECT_ROOT, 'bin', 'cnocr_models_v2')
+
+REC_MODEL_PATH = os.path.join(_MODEL_DIR, 'cnocr', 'cnocr-v2.3-densenet_lite_136-gru-epoch=004-ft-model.onnx')
+DET_MODEL_PATH = os.path.join(_MODEL_DIR, 'cnstd', 'ch_PP-OCRv5_det_infer.onnx')
+
+_HF_MIRROR = 'https://hf-mirror.com'
 
 logger.info('Loading OCR dependencies')
 from cnocr import CnOcr
-from cnocr.cn_ocr import (check_model_name, data_dir, gen_network, load_module,
-                          read_charset)
-from cnocr.fit.ctc_metrics import CtcMetrics
-from cnocr.hyperparams.cn_hyperparams import CnHyperparams as Hyperparams
-from module.device.pkg_resources import PACKAGE_CACHE
-
-
-def get_mxnet_context():
-    for dist in PACKAGE_CACHE.dict_installed_packages.values():
-        # mxnet_cu101
-        if dist.dist.startswith('mxnet_cu'):
-            logger.info(f'MXNet gpu package: {dist.dist}=={dist.version} found, using it')
-            return 'gpu'
-
-    return 'cpu'
 
 
 class AlOcr(CnOcr):
-    # 'cpu' or 'gpu'
-    # To use predict in gpu, the gpu version of mxnet must be installed.
-    CNOCR_CONTEXT = get_mxnet_context()
+    """
+    ALAS wrapper for cnocr v2.x providing v1.x-compatible API.
+
+    - Uses bundled local ONNX models (no HF download needed).
+    - Internal methods (ocr_for_single_line, ocr_for_single_lines) return
+      cnocr v2.x native Dict format so parent's pipeline works correctly.
+    - Atomic methods (atomic_ocr, atomic_ocr_for_single_lines) convert to
+      v1.x str format for ALAS compatibility.
+    """
+    CNOCR_CONTEXT = 'cpu'
 
     def __init__(
             self,
-            model_name='densenet-lite-gru',
+            model_name='densenet_lite_136-gru',
             model_epoch=None,
             cand_alphabet=None,
-            root=data_dir(),
+            root=None,
             context='cpu',
             name=None,
     ):
         self._args = (model_name, model_epoch, cand_alphabet, root, context, name)
         self._model_loaded = False
+        self._model_name = model_name
+        self._alphabet = None
+        self._cand_alph_idx = None
 
     def init(self,
-             model_name='densenet-lite-gru',
+             model_name='densenet_lite_136-gru',
              model_epoch=None,
              cand_alphabet=None,
-             root=data_dir(),
+             root=None,
              context='cpu',
              name=None,
              ):
-        """
-
-        :param model_name: 模型名称
-        :param model_epoch: 模型迭代次数
-        :param cand_alphabet: 待识别字符所在的候选集合。默认为 `None`，表示不限定识别字符范围
-        :param root: 模型文件所在的根目录。
-            Linux/Mac下默认值为 `~/.cnocr`，表示模型文件所处文件夹类似 `~/.cnocr/1.1.0/conv-lite-fc-0027`。
-            Windows下默认值为 ``。
-        :param context: 'cpu', or 'gpu'。表明预测时是使用CPU还是GPU。默认为CPU。
-        :param name: 正在初始化的这个实例名称。如果需要同时初始化多个实例，需要为不同的实例指定不同的名称。
-        """
-        check_model_name(model_name)
         self._model_name = model_name
-        self._model_file_prefix = '{}-{}'.format(self.MODEL_FILE_PREFIX, model_name)
-        self._model_epoch = model_epoch
 
-        self._model_dir = root  # Change folder structure.
-        self._assert_and_prepare_model_files()
-        self._alphabet, self._inv_alph_dict = read_charset(
-            os.path.join(self._model_dir, 'label_cn.txt')
-        )
+        if os.path.exists(REC_MODEL_PATH) and os.path.exists(DET_MODEL_PATH):
+            logger.info('Using local OCR models')
+            super().__init__(
+                rec_model_fp=REC_MODEL_PATH,
+                det_model_fp=DET_MODEL_PATH,
+                rec_model_backend='onnx',
+                det_model_backend='onnx',
+                cand_alphabet=cand_alphabet,
+                context=AlOcr.CNOCR_CONTEXT,
+            )
+        else:
+            logger.warning(f'Local models missing, downloading from {_HF_MIRROR}')
+            logger.warning(f'  Rec: {REC_MODEL_PATH}')
+            logger.warning(f'  Det: {DET_MODEL_PATH}')
+            if 'HF_ENDPOINT' not in os.environ:
+                os.environ['HF_ENDPOINT'] = _HF_MIRROR
+            super().__init__(
+                rec_model_name=model_name,
+                cand_alphabet=cand_alphabet,
+                context=AlOcr.CNOCR_CONTEXT,
+            )
 
-        self._cand_alph_idx = None
-        # Alphabet will be set before calling ocr.
-        # self.set_cand_alphabet(cand_alphabet)
+        alphabet = None
+        if hasattr(self, 'rec_model'):
+            rec = self.rec_model
+            for attr in ('vocab', '_vocab', '_alphabet'):
+                if hasattr(rec, attr):
+                    alphabet = getattr(rec, attr)
+                    break
 
-        self._hp = Hyperparams()
-        self._hp._loss_type = None  # infer mode
-        self._hp._num_classes = len(self._alphabet)
-        # 传入''的话，也改成传入None
-        self._net_prefix = None if name == '' else name
+        if alphabet is not None and len(alphabet) > 0:
+            self._alphabet = alphabet
+            logger.info(f'OCR alphabet loaded: {len(self._alphabet)} characters')
+        else:
+            logger.warning('Could not extract alphabet, using fallback')
+            self._alphabet = [' '] + [chr(i) for i in range(0x4e00, 0x9fff)]
 
-        self._mod = self._get_module(AlOcr.CNOCR_CONTEXT)
+    # ---- Type conversion helpers ----
 
-    def ocr(self, img_fp):
+    @staticmethod
+    def _to_str(result):
+        """v2.x dict → v1.x string"""
+        if isinstance(result, dict):
+            return result.get('text', '')
+        return result
+
+    def _to_str_list(self, result_list):
+        return [self._to_str(r) for r in result_list]
+
+    # ---- Core OCR (v2.x native format internally) ----
+    # These return v2.x Dict so parent's internal pipeline works.
+    # ALAS code should use the atomic_* methods instead.
+
+    def ocr(self, img_fp, **kwargs):
         if not self._model_loaded:
             self.init(*self._args)
             self._model_loaded = True
-
-        return super().ocr(img_fp)
+        return super().ocr(img_fp, **kwargs)
 
     def ocr_for_single_line(self, img_fp):
         if not self._model_loaded:
             self.init(*self._args)
             self._model_loaded = True
-
         return super().ocr_for_single_line(img_fp)
 
-    def ocr_for_single_lines(self, img_list):
+    def ocr_for_single_lines(self, img_list, batch_size=1):
         if not self._model_loaded:
             self.init(*self._args)
             self._model_loaded = True
-
-        return super().ocr_for_single_lines(img_list)
+        return super().ocr_for_single_lines(img_list, batch_size=batch_size)
 
     def set_cand_alphabet(self, cand_alphabet):
         if not self._model_loaded:
             self.init(*self._args)
             self._model_loaded = True
+        if hasattr(self, 'rec_model'):
+            self.rec_model.set_cand_alphabet(cand_alphabet)
+        self._cand_alph_idx = cand_alphabet
 
-        return super().set_cand_alphabet(cand_alphabet)
+    # ---- Sampling for fine-tuning data collection ----
 
-    """
-    Atomic version of the OCR methods above
-    handling set_cand_alphabet inside
-    """
+    def _maybe_sample(self, image, text, cand_alphabet):
+        """Save a sample for OCR fine-tuning if the sampler decides to."""
+        try:
+            from module.ocr.sampler import SAMPLER
+            if SAMPLER.should_sample():
+                SAMPLER.save_sample(
+                    image=image,
+                    text=text,
+                    cand_alphabet=cand_alphabet or '',
+                )
+        except Exception:
+            pass  # sampler should never break OCR
+
+    # ---- Atomic methods (v1.x compatible string output) ----
+    # ALAS code calls these through Ocr -> OCR_MODEL -> AlOcr
 
     def atomic_ocr(self, img_fp, cand_alphabet=None):
         if not self._model_loaded:
             self.init(*self._args)
             self._model_loaded = True
-
-        super().set_cand_alphabet(cand_alphabet)
-
-        return super().ocr(img_fp)
+        self.set_cand_alphabet(cand_alphabet)
+        raw = super().ocr(img_fp)
+        result = self._to_str_list(raw)
+        # Sample first result for training data
+        if result and raw:
+            img = img_fp[0] if isinstance(img_fp, list) else img_fp
+            self._maybe_sample(img, result[0], cand_alphabet)
+        return result
 
     def atomic_ocr_for_single_line(self, img_fp, cand_alphabet=None):
         if not self._model_loaded:
             self.init(*self._args)
             self._model_loaded = True
+        self.set_cand_alphabet(cand_alphabet)
+        raw = super().ocr_for_single_line(img_fp)
+        result = self._to_str(raw)
+        self._maybe_sample(img_fp, result, cand_alphabet)
+        return result
 
-        super().set_cand_alphabet(cand_alphabet)
-
-        return super().ocr_for_single_line(img_fp)
-
-    def atomic_ocr_for_single_lines(self, img_list, cand_alphabet=None):
+    def atomic_ocr_for_single_lines(self, img_list, cand_alphabet=None, batch_size=1):
         if not self._model_loaded:
             self.init(*self._args)
             self._model_loaded = True
-
-        super().set_cand_alphabet(cand_alphabet)
-
-        return super().ocr_for_single_lines(img_list)
-
-    def _assert_and_prepare_model_files(self):
-        model_dir = self._model_dir
-        model_files = [
-            'label_cn.txt',
-            '%s-%04d.params' % (self._model_file_prefix, self._model_epoch),
-            '%s-symbol.json' % self._model_file_prefix,
-        ]
-        file_prepared = True
-        for f in model_files:
-            f = os.path.join(model_dir, f)
-            if not os.path.exists(f):
-                file_prepared = False
-                logger.warning('can not find file %s', f)
-                break
-
-        if file_prepared:
-            return
-
-        # Disable auto downloading cnocr models when model not found.
-        # get_model_file(model_dir)
-        logger.warning(f'Ocr model not prepared: {model_dir}')
-        logger.warning(f'Required files: {model_files}')
-        logger.critical('Please check if required files of pre-trained OCR model exist')
-        raise RequestHumanTakeover
-
-    def _get_module(self, context):
-        network, self._hp = gen_network(self._model_name, self._hp, self._net_prefix)
-        hp = self._hp
-        prefix = os.path.join(self._model_dir, self._model_file_prefix)
-        data_names = ['data']
-        data_shapes = [(data_names[0], (hp.batch_size, 1, hp.img_height, hp.img_width))]
-        logger.info('Loading OCR model: %s' % self._model_dir)  # Change log appearance.
-        mod = load_module(
-            prefix,
-            self._model_epoch,
-            data_names,
-            data_shapes,
-            network=network,
-            net_prefix=self._net_prefix,
-            context=context,
-        )
-        return mod
-
-    def _preprocess_img_array(self, img):
-        """
-        :param img: image array with type mx.nd.NDArray or np.ndarray,
-        with shape [height, width] or [height, width, channel].
-        channel should be 1 (gray image) or 3 (color image).
-
-        :return: np.ndarray, with shape (1, height, width)
-        """
-        # Resize image using `cv2.resize` instead of `mxnet.image.imresize`
-        new_width = int(round(self._hp.img_height / img.shape[0] * img.shape[1]))
-        img = cv2.resize(img, (new_width, self._hp.img_height))
-        img = np.expand_dims(img, 0).astype('float32') / 255.0
-        return img
-
-    def _gen_line_pred_chars(self, line_prob, img_width, max_img_width):
-        """
-        Get the predicted characters.
-        :param line_prob: with shape of [seq_length, num_classes]
-        :param img_width:
-        :param max_img_width:
-        :return:
-        """
-        class_ids = np.argmax(line_prob, axis=-1)
-
-        class_ids *= np.max(line_prob, axis=-1) > 0.5  # Delete low confidence result
-
-        if img_width < max_img_width:
-            comp_ratio = self._hp.seq_len_cmpr_ratio
-            end_idx = img_width // comp_ratio
-            if end_idx < len(class_ids):
-                class_ids[end_idx:] = 0
-        prediction, start_end_idx = CtcMetrics.ctc_label(class_ids.tolist())
-        alphabet = self._alphabet
-        res = [alphabet[p] if alphabet[p] != '<space>' else ' ' for p in prediction]
-
-        return res
-
-    def debug(self, img_list):
-        """
-        Args:
-            img_list: List of numpy array, (height, width)
-        """
-        self.init(*self._args)
-        img_list = [(self._preprocess_img_array(img) * 255.0).astype(np.uint8) for img in img_list]
-        img_list, img_widths = self._pad_arrays(img_list)
-        image = cv2.hconcat(img_list)[0, :, :]
-        Image.fromarray(image).show()
+        self.set_cand_alphabet(cand_alphabet)
+        raw = super().ocr_for_single_lines(img_list, batch_size=batch_size)
+        result = self._to_str_list(raw)
+        # Sample one per batch to avoid filling disk
+        if result and img_list:
+            self._maybe_sample(img_list[0], result[0], cand_alphabet)
+        return result

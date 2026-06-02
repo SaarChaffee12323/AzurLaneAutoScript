@@ -4,62 +4,38 @@ from module.base.decorator import cached_property
 class OcrModel:
     @cached_property
     def azur_lane(self):
-        # Folder: ./bin/cnocr_models/azur_lane
-        # Size: 3.25MB
-        # Model: densenet-lite-gru
-        # Epoch: 15
-        # Validation accuracy: 99.43%
-        # Font: Impact, AgencyFB-Regular, MStiffHeiHK-UltraBold
-        # Charset: 0123456789ABCDEFGHIJKLMNPQRSTUVWXYZ:/- (Letter 'O' and <space> is not included)
-        # _num_classes: 39
+        # cnocr v2.x model: densenet_lite_136-gru
+        # Charset: 0123456789ABCDEFGHIJKLMNPQRSTUVWXYZ:/- and more
+        # _num_classes: 6682
+        # Note: Original v1.x model (mxnet) was trained specifically on AL fonts.
+        # Using v2.x generic model as fallback since mxnet is EOL.
         from module.ocr.al_ocr import AlOcr
-        return AlOcr(model_name='densenet-lite-gru', model_epoch=15, root='./bin/cnocr_models/azur_lane',
-                     name='azur_lane')
+        return AlOcr(model_name='densenet_lite_136-gru', name='azur_lane')
 
     @cached_property
     def azur_lane_jp(self):
-        # Folder: ./bin/cnocr_models/azur_lane_jp
-        # Size: 3.25MB
-        # Model: densenet-lite-gru
-        # Epoch: 20
-        # Validation accuracy: 99.01%
-        # Font: Impact, VibeMO Compressed Pro Thin, Folk R, Source Han Serif JP
-        # Charset: 0123456789ABCDEFGHIJKLMNPQRSTUVWXYZ:/- (Letter 'O' and <space> is not included)
-        # _num_classes: 39
         from module.ocr.al_ocr import AlOcr
-        return AlOcr(model_name='densenet-lite-gru', model_epoch=20, root='./bin/cnocr_models/azur_lane_jp',
-                     name='azur_lane_jp')
+        return AlOcr(model_name='densenet_lite_136-gru', name='azur_lane_jp')
 
     @cached_property
     def cnocr(self):
-        # Folder: ./bin/cnocr_models/cnocr
-        # Size: 9.51MB
-        # Model: densenet-lite-gru
-        # Epoch: 39
-        # Validation accuracy: 99.04%
-        # Font: Various
-        # Charset: Number, English character, Chinese character, symbols, <space>
-        # _num_classes: 6426
+        # cnocr v2.x model: densenet_lite_136-gru
+        # Charset: Numbers, English characters, Chinese characters, symbols, <space>
+        # _num_classes: 6682
         from module.ocr.al_ocr import AlOcr
-        return AlOcr(model_name='densenet-lite-gru', model_epoch=39, root='./bin/cnocr_models/cnocr', name='cnocr')
+        return AlOcr(model_name='densenet_lite_136-gru', name='cnocr')
 
     @cached_property
     def jp(self):
+        # cnocr v2.x does not have a dedicated JP model, using general model as fallback
         from module.ocr.al_ocr import AlOcr
-        return AlOcr(model_name='densenet-lite-gru', model_epoch=125, root='./bin/cnocr_models/jp', name='jp')
+        return AlOcr(model_name='densenet_lite_136-gru', name='jp')
 
     @cached_property
     def tw(self):
-        # Folder: ./bin/cnocr_models/tw
-        # Size: 8.43MB
-        # Model: densenet-lite-gru
-        # Epoch: 63
-        # Validation accuracy: 99.24%
-        # Font: Various, 6 kinds
-        # Charset: Numbers, Upper english characters, Chinese traditional characters
-        # _num_classes: 5322
+        # cnocr v2.x does not have a dedicated TW model, using general model as fallback
         from module.ocr.al_ocr import AlOcr
-        return AlOcr(model_name='densenet-lite-gru', model_epoch=63, root='./bin/cnocr_models/tw', name='tw')
+        return AlOcr(model_name='densenet_lite_136-gru', name='tw')
 
 
 OCR_MODEL = OcrModel()

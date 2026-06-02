@@ -507,69 +507,136 @@ class ResearchProject:
         else:
             return f'{self.series} {self.name} (Invalid)'
 
+    _correction_rules = None  # Lazy-loaded YAML config
+
+    @classmethod
+    def _load_correction_rules(cls):
+        """Load OCR correction rules from YAML config file."""
+        if cls._correction_rules is not None:
+            return cls._correction_rules
+
+        import os
+        import yaml
+        path = os.path.join(os.path.dirname(__file__), 'correction_rules.yaml')
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                cls._correction_rules = yaml.safe_load(f)
+            logger.info(f'Loaded OCR correction rules from {path}')
+        except Exception:
+            logger.warning(f'Could not load {path}, using built-in rules')
+            cls._correction_rules = None
+        return cls._correction_rules
+
     def __eq__(self, other):
         return str(self) == str(other)
 
     def check_name(self, name):
         """
+        Apply OCR correction rules (from YAML config if available, else built-in).
+
         Args:
-            name (str):
+            name (str): Raw OCR result
 
         Returns:
-            str:
+            str: Corrected name
         """
+        rules = self._load_correction_rules()
+
+        if rules:
+            return self._check_name_from_config(name, rules)
+        else:
+            return self._check_name_builtin(name)
+
+    def _check_name_from_config(self, name, rules):
+        """Apply rules from YAML configuration."""
         name = name.strip('-')
-        # G-185-MI, D-T85-MI -> C-185-MI
+
+        # Exact replacements
+        for rule in rules.get('exact', []):
+            if name == rule['from']:
+                return rule['to']
+
+        parts = [p for p in name.split('-') if p]
+        if len(parts) != 3:
+            # Try to insert missing dash (e.g., H339-MI → H-339-MI)
+            if len(parts) == 2 and name[0].isalpha() and name[1].isdigit():
+                return self.check_name(f'{name[0]}-{name[1:]}')
+            return name
+
+        prefix, number, suffix = parts
+
+        # Number substitutions
+        for rule in rules.get('number_substitutions', []):
+            number = number.replace(rule['from'], rule['to'])
+
+        # TW-specific number fix
+        if 'tw_specific' in rules:
+            for rule in rules['tw_specific']:
+                if number == rule['number'] and self.raw_series == rule['from_series']:
+                    number = rule['to']
+
+        # Prefix corrections
+        for rule in rules.get('prefix_substitutions', []):
+            from_val = rule['from']
+            to_val = rule['to']
+            if rule.get('only_if_number_in'):
+                ref = getattr(ResearchProject, rule['only_if_number_in'], set())
+                if number not in ref:
+                    continue
+            if prefix == from_val or (from_val == '' and prefix in ['I1', 'U', '']):
+                prefix = to_val
+
+        # Suffix substring replacements
+        for rule in rules.get('suffix_replacements', []):
+            suffix = suffix.replace(rule['from'], rule['to'])
+        # Suffix exact matches
+        for rule in rules.get('suffix_exact', []):
+            if suffix == rule['from']:
+                suffix = rule['to']
+
+        # TW: B→D conversion
+        tw_rule = rules.get('tw_prefix_b_to_d', {})
+        if tw_rule.get('apply') and prefix == 'B' and number in ResearchProject.D_PROJECT_NUMBERS:
+            excluded = any(e['number'] == number and e.get('suffix') == suffix
+                          for e in tw_rule.get('except', []))
+            if not excluded:
+                prefix = 'D'
+
+        return '-'.join([prefix, number, suffix])
+
+    def _check_name_builtin(self, name):
+        """Fallback: original hardcoded rules (kept for when YAML is unavailable)."""
+        name = name.strip('-')
         name = name.replace('G-185', 'C-185').replace('D-T85', 'C-185')
-        # E-316-MI -> E-315-MI
         if name == '316-MI':
             name = 'E-315-MI'
 
-        parts = name.split('-')
-        parts = [i for i in parts if i]
+        parts = [p for p in name.split('-') if p]
         if len(parts) == 3:
             prefix, number, suffix = parts
-
             number = number.replace('D', '0').replace('O', '0').replace('S', '5')
-            # E-316-MI -> E-315-MI
             number = number.replace('316', '315')
-            # [TW] S5 D-349-MI -> S5 D-319-MI
             if prefix == 'D' and number == '349' and self.raw_series == 5:
                 number = '319'
-
             if prefix in ['I1', 'U']:
                 prefix = 'D'
             prefix = prefix.strip('I1')
-            # LC-038-RF -> C-038-RF
             prefix = prefix.replace('LC', 'C')
-
-            # S3 D-022-MI (S3-Drake-0.5) detected as 'D-022-ML', because of Drake's white cloth.
             suffix = suffix.replace('ML', 'MI').replace('MIL', 'MI').replace('M1', 'MI')
-            # S4 D-063-UL (S4-hakuryu-0.5) detected as 'D-063-0C'
-            # D-057-DC -> D-057-UL
             suffix = suffix.replace('0C', 'UL').replace('UC', 'UL')
             suffix = suffix.replace('DC5', 'UL').replace('DC3', 'UL').replace('DC', 'UL')
-            # D-075-UL1 -> D-075-UL
             suffix = suffix.replace('UL1', 'UL').replace('ULI', 'UL').replace('UL5', 'UL')
-
             if suffix == 'U':
                 suffix = 'UL'
-            # TW ocr errors, convert B to D
             if prefix == 'B' and number in ResearchProject.D_PROJECT_NUMBERS:
-                # Keep B-397-RF, S7 D-397-MI and S* B-397-RF shares 397
-                if number == '397' and suffix == 'RF':
-                    pass
-                else:
+                if not (number == '397' and suffix == 'RF'):
                     prefix = 'D'
-            # I-483-RF revised to -483-RF -> D-483-RF
             if prefix == '' and number in ResearchProject.D_PROJECT_NUMBERS:
                 prefix = 'D'
-            # L-153-MI -> C-153-MI
             if prefix == 'L' and number in ResearchProject.C_PROJECT_NUMBERS:
                 prefix = 'C'
             return '-'.join([prefix, number, suffix])
         elif len(parts) == 2:
-            # Trying to insert '-', for results like H339-MI
             if name[0].isalpha() and name[1].isdigit():
                 return self.check_name(f'{name[0]}-{name[1:]}')
         return name

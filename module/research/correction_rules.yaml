@@ -1,0 +1,96 @@
+# OCR correction rules for research project name detection.
+# Edit this file to add/change rules without touching Python code.
+# Format: exact matches, character substitutions, prefix/suffix fixes.
+
+# ---- Exact replacements ----
+# These typo patterns are consistently mis-read by OCR.
+exact:
+  - from: "G-185"
+    to: "C-185"
+  - from: "D-T85"
+    to: "C-185"
+  - from: "316-MI"
+    to: "E-315-MI"
+  - from: "339-M"
+    to: "H-339-MI"
+  - from: "6-236-MI"
+    to: "G-236-MI"
+
+# ---- Number portion corrections ----
+# Characters commonly confused in AL font.
+number_substitutions:
+  - from: "D"
+    to: "0"
+  - from: "O"
+    to: "0"
+  - from: "S"
+    to: "5"
+  - from: "316"
+    to: "315"
+
+# ---- TW server specific ----
+tw_specific:
+  - number: "349"
+    from_series: 5
+    to: "319"
+
+# ---- Prefix corrections ----
+prefix_substitutions:
+  - from: "I1"
+    to: "D"
+  - from: "1"
+    to: "D"
+    only_if_number_in: "D_PROJECT_NUMBERS"  # OCR reads 'D' as '1'
+  - from: "U"
+    to: "D"
+  - from: "LC"
+    to: "C"
+  - from: "L"
+    to: "C"
+    only_if_number_in: "C_PROJECT_NUMBERS"  # only for C-type project numbers
+  - from: ""
+    to: "D"
+    only_if_number_in: "D_PROJECT_NUMBERS"  # missing prefix → assume D
+
+# ---- Suffix corrections ----
+# Suffix corrections: substring replacements (applied in order)
+suffix_replacements:
+  # MI variants
+  - from: "ML"
+    to: "MI"
+  - from: "MIL"
+    to: "MI"
+  - from: "M1"
+    to: "MI"
+  # UL variants (ordered: longer patterns first to avoid partial matches)
+  - from: "DC5"
+    to: "UL"
+  - from: "DC3"
+    to: "UL"
+  - from: "0C"
+    to: "UL"
+  - from: "UC"
+    to: "UL"
+  - from: "DC"
+    to: "UL"
+  - from: "UL1"
+    to: "UL"
+  - from: "ULI"
+    to: "UL"
+  - from: "UL5"
+    to: "UL"
+
+# Suffix exact matches (only applied if the whole suffix matches)
+suffix_exact:
+  - from: "U"
+    to: "UL"
+  - from: "M"
+    to: "MI"
+
+# ---- TW-specific prefix correction ----
+# B → D for certain numbers (except B-397-RF which is real)
+tw_prefix_b_to_d:
+  apply: true
+  except:
+    - number: "397"
+      suffix: "RF"

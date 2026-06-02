@@ -26,6 +26,71 @@ class AzurLaneAutoScript:
         # Failure count of tasks
         # Key: str, task name, value: int, failure count
         self.failure_record = {}
+        # Circuit breaker state: {task_name: datetime when to re-enable}
+        self._circuit_breakers = {}
+        self._load_circuit_breakers()
+
+    def _circuit_breaker_path(self):
+        return f'./log/{self.config_name}_circuit_breaker.json'
+
+    def _load_circuit_breakers(self):
+        """Load circuit breaker state from disk."""
+        import json
+        path = self._circuit_breaker_path()
+        if os.path.exists(path):
+            with open(path, 'r', encoding='utf-8') as f:
+                raw = json.load(f)
+                self._circuit_breakers = {k: datetime.fromisoformat(v) for k, v in raw.items()}
+            logger.info(f'Loaded {len(self._circuit_breakers)} circuit breaker(s)')
+
+    def _save_circuit_breaker(self, task, until):
+        """Save a circuit breaker entry to disk."""
+        import json
+        self._circuit_breakers[task] = until
+        path = self._circuit_breaker_path()
+        raw = {k: v.isoformat() for k, v in self._circuit_breakers.items()}
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(raw, f, ensure_ascii=False, indent=2)
+
+    def _trigger_dependents(self, completed_task):
+        """After a task succeeds, trigger any tasks that depend on it.
+        Dependency is specified via Scheduler.RunAfter in the task config.
+        """
+        for section, data in self.config.data.items():
+            sched = data.get("Scheduler", {}) if isinstance(data, dict) else None
+            if not sched:
+                continue
+            run_after = sched.get("RunAfter", "")
+            if run_after and run_after.strip() == completed_task:
+                logger.info(f"Dependency: `{section}` runs after `{completed_task}` — "
+                            f"setting next_run to now")
+                self.config.modified[f"{section}.Scheduler.NextRun"] = datetime.now().replace(microsecond=0)
+                if self.config.auto_update:
+                    self.config.update()
+
+    def _check_circuit_breakers(self):
+        """Re-enable any tasks whose circuit breaker cooldown has expired."""
+        now = datetime.now()
+        re_enabled = []
+        for task, until in list(self._circuit_breakers.items()):
+            if now >= until:
+                try:
+                    self.config.task_enable(task)
+                    re_enabled.append(task)
+                    del self._circuit_breakers[task]
+                    logger.info(f'Circuit breaker: re-enabled task `{task}`')
+                except Exception:
+                    # Config may have changed, just remove the breaker
+                    del self._circuit_breakers[task]
+
+        if re_enabled:
+            self._save_circuit_breaker('_placeholder', datetime.now())  # trigger save by removing expired
+            # Actually just save what's left
+            import json
+            path = self._circuit_breaker_path()
+            raw = {k: v.isoformat() for k, v in self._circuit_breakers.items()}
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(raw, f, ensure_ascii=False, indent=2)
 
     @cached_property
     def config(self):
@@ -115,13 +180,22 @@ class AzurLaneAutoScript:
             )
             exit(1)
         except RequestHumanTakeover:
-            logger.critical('Request human takeover')
+            # Circuit breaker: don't crash, just skip this task
+            logger.critical('Request human takeover — pausing task via circuit breaker')
+            self.save_error_log()
+            cooldown_hours = getattr(self.config, 'Error_CircuitBreakerCooldown', 2)
+            until = datetime.now() + timedelta(hours=cooldown_hours)
+            task = getattr(self, '_current_task', 'unknown')
+            self.config.task_disable(task)
+            self._save_circuit_breaker(task, until)
             handle_notify(
                 self.config.Error_OnePushConfig,
-                title=f"Alas <{self.config_name}> crashed",
-                content=f"<{self.config_name}> RequestHumanTakeover",
+                title=f"Alas <{self.config_name}> — Circuit Breaker",
+                content=f"Task `{task}` paused for {cooldown_hours}h (RequestHumanTakeover)\nResumes at {until.strftime('%Y-%m-%d %H:%M')}",
             )
-            exit(1)
+            # Return failure so the loop's circuit breaker handles it
+            del_cached_property(self, 'config')
+            return False
         except Exception as e:
             logger.exception(e)
             self.save_error_log()
@@ -535,6 +609,8 @@ class AzurLaneAutoScript:
                 del_cached_property(self, 'config')
                 logger.info('Server or network is recovered. Restart game client')
                 self.config.task_call('Restart')
+            # Re-enable any circuit-breaker-paused tasks whose cooldown expired
+            self._check_circuit_breakers()
             # Get task
             task = self.get_next_task()
             # Init device and change server
@@ -548,6 +624,7 @@ class AzurLaneAutoScript:
                 continue
 
             # Run
+            self._current_task = task
             logger.info(f'Scheduler: Start task `{task}`')
             self.device.stuck_record_clear()
             self.device.click_record_clear()
@@ -561,20 +638,39 @@ class AzurLaneAutoScript:
             failed = 0 if success else failed + 1
             deep_set(self.failure_record, keys=task, value=failed)
             if failed >= 3:
-                logger.critical(f"Task `{task}` failed 3 or more times.")
-                logger.critical("Possible reason #1: You haven't used it correctly. "
-                                "Please read the help text of the options.")
-                logger.critical("Possible reason #2: There is a problem with this task. "
-                                "Please contact developers or try to fix it yourself.")
-                logger.critical('Request human takeover')
+                # Circuit breaker: auto-pause this task for cooldown_hours
+                # Other tasks continue running normally.
+                cooldown_hours = getattr(self.config, 'Error_CircuitBreakerCooldown', 2)
+                until = datetime.now() + timedelta(hours=cooldown_hours)
+
+                logger.critical(f"Task `{task}` failed 3 or more times — "
+                                f"circuit breaker activated: pausing for {cooldown_hours}h (until {until.strftime('%H:%M')})")
+                logger.critical("All other tasks will continue running normally.")
+
+                # Disable the task in config
+                self.config.task_disable(task)
+
+                # Record circuit breaker state for re-enable + dashboard visibility
+                self._save_circuit_breaker(task, until)
+
+                # Reset failure count (so it gets a fresh start after cooldown)
+                deep_set(self.failure_record, keys=task, value=0)
+
                 handle_notify(
                     self.config.Error_OnePushConfig,
-                    title=f"Alas <{self.config_name}> crashed",
-                    content=f"<{self.config_name}> RequestHumanTakeover\nTask `{task}` failed 3 or more times.",
+                    title=f"Alas <{self.config_name}> — Circuit Breaker",
+                    content=f"Task `{task}` paused for {cooldown_hours}h\n"
+                            f"Resumes at {until.strftime('%Y-%m-%d %H:%M')}\n"
+                            f"Other tasks unaffected.",
                 )
-                exit(1)
+
+                # Continue loop — don't exit!
+                del_cached_property(self, 'config')
+                continue
 
             if success:
+                # Dependency chain: trigger any tasks that depend on this one
+                self._trigger_dependents(task)
                 del_cached_property(self, 'config')
                 continue
             elif self.config.Error_HandleError:
