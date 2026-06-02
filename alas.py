@@ -159,14 +159,16 @@ class AzurLaneAutoScript:
             logger.info('Game server may be under maintenance or network may be broken, check server status now')
             self.checker.check_now()
             if self.checker.is_available():
-                logger.critical('Game page unknown')
+                logger.critical('Game page unknown, restarting game to recover')
                 self.save_error_log()
                 handle_notify(
                     self.config.Error_OnePushConfig,
-                    title=f"Alas <{self.config_name}> crashed",
-                    content=f"<{self.config_name}> GamePageUnknownError",
+                    title=f"Alas <{self.config_name}> — Page Unknown",
+                    content=f"Game page unknown, restarting game to recover.",
                 )
-                exit(1)
+                self.device.app_stop()
+                self.device.app_start()
+                return False
             else:
                 self.checker.wait_until_available()
                 return False
