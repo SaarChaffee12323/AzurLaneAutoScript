@@ -273,7 +273,13 @@ class RewardDorm(UI):
         return Digit(grids.buttons, letter=(255, 255, 255), threshold=128, name='OCR_DORM_FOOD')
 
     def _dorm_has_food(self, button):
-        return np.min(rgb2gray(self.image_crop(button, copy=False))) < 127
+        gray = rgb2gray(self.image_crop(button, copy=False))
+        # A greyed-out (exhausted) food slot has low contrast — the dimmed icon
+        # lacks the dark areas of an active food icon. Check both min (dark
+        # pixels exist) and mean (overall brightness is not too high).
+        if np.min(gray) > 100 or np.mean(gray) > 160:
+            return False
+        return True
 
     def _dorm_feed_click(self, button, count):
         """
@@ -315,7 +321,10 @@ class RewardDorm(UI):
         """
         has_food = [self._dorm_has_food(button) for button in self._dorm_food.buttons]
         amount = self._dorm_food_ocr.ocr(self.device.image)
-        amount = [a if hf else 0 for a, hf in zip(amount, has_food)]
+        # Only trust `_dorm_has_food` when OCR also confirms a positive quantity.
+        # Exhausted (greyed-out) food may still have dark icon outlines that
+        # fool _dorm_has_food into returning True.
+        amount = [a if hf and a > 0 else 0 for a, hf in zip(amount, has_food)]
         food = [Food(feed=f, amount=a) for f, a in zip(FOOD_FEED_AMOUNT, amount)]
         _, fill, total = OCR_FILL.ocr(self.device.image)
         if total == 0:
