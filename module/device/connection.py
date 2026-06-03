@@ -75,7 +75,17 @@ def retry(func):
                 def init():
                     pass
 
-        logger.critical(f'Retry {func.__name__}() failed')
+        # Last-resort recovery: kill and restart the entire ADB server
+        logger.critical(f'Retry {func.__name__}() failed — attempting adb kill-server recovery')
+        try:
+            self.subprocess_run([self.adb_binary, 'kill-server'])
+            self.subprocess_run([self.adb_binary, 'start-server'])
+            self.adb_reconnect()
+            return func(self, *args, **kwargs)
+        except Exception:
+            pass
+
+        logger.critical(f'All recovery attempts for {func.__name__}() failed')
         raise RequestHumanTakeover
 
     return retry_wrapper
