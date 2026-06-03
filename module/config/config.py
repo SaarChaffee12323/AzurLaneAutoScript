@@ -130,6 +130,24 @@ class AzurLaneConfig(ConfigUpdater, ManualConfig, GeneratedConfig, ConfigWatcher
         for path, value in self.modified.items():
             deep_set(self.data, keys=path, value=value)
 
+        if not self.is_template_config:
+            self._validate_config()
+
+    def _validate_config(self):
+        """Check for unknown sections/keys in user config vs template."""
+        try:
+            template = self.read_file('template')
+        except Exception:
+            return  # template not available, skip validation
+
+        for section in self.data:
+            if section not in template:
+                logger.warning(f'Config validation: unknown section "{section}"')
+                continue
+            for key in self.data[section]:
+                if key not in template[section]:
+                    logger.warning(f'Config validation: unknown key "{section}.{key}"')
+
     def bind(self, func, func_list=None):
         """
         Args:
