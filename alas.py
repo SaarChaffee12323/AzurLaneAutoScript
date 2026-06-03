@@ -528,7 +528,18 @@ class AzurLaneAutoScript:
             # cascading failures across all other tasks.
             _CRITICAL_TASKS = {'Restart', 'goto_main', 'Alas'}
 
-            if failed >= 3 and task not in _CRITICAL_TASKS:
+            if failed >= 3 and task in _CRITICAL_TASKS:
+                # A critical recovery task keeps failing (e.g., ADB is dead).
+                # Pause everything briefly to give the system time to recover.
+                cooldown = 10  # minutes
+                logger.critical(f'Critical task `{task}` failed {failed} times — '
+                                f'pausing all tasks for {cooldown}min')
+                self.config.task_delay(minute=cooldown)
+                deep_set(self.failure_record, keys=task, value=0)
+                del_cached_property(self, 'config')
+                continue
+
+            if failed >= 3:
                 # Circuit breaker: auto-pause this task for cooldown_hours
                 # Other tasks continue running normally.
                 cooldown_hours = getattr(self.config, 'Error_CircuitBreakerCooldown', 2)
