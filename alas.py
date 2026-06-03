@@ -235,6 +235,28 @@ class AzurLaneAutoScript:
                 lines = handle_sensitive_logs(lines)
             with open(f'{folder}/log.txt', 'w', encoding='utf-8') as f:
                 f.writelines(lines)
+            self._clean_old_error_logs()
+
+    def _clean_old_error_logs(self, keep_days=7):
+        """Remove error log directories older than *keep_days*."""
+        import shutil
+        error_dir = './log/error'
+        if not os.path.exists(error_dir):
+            return
+        cutoff = time.time() - keep_days * 86400
+        for name in os.listdir(error_dir):
+            try:
+                ts = int(name)
+                age = cutoff - ts / 1000.0
+            except (ValueError, OSError):
+                continue
+            if age > 0:
+                path = os.path.join(error_dir, name)
+                try:
+                    shutil.rmtree(path, ignore_errors=True)
+                    logger.info(f'Cleaned old error log: {name}')
+                except Exception:
+                    pass
 
     def restart(self):
         from module.handler.login import LoginHandler
