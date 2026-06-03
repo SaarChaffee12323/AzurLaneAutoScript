@@ -253,12 +253,18 @@ class RewardDorm(UI):
         grids = self._dorm_food.crop((54, 41, 101, 66), name='FOOD_AMOUNT')
         return Digit(grids.buttons, letter=(255, 255, 255), threshold=128, name='OCR_DORM_FOOD')
 
+    # Thresholds for distinguishing active vs greyed-out (exhausted) food icons.
+    # Active food: dark icon outlines → np.min(gray) ≤ THRESHOLD_MIN.
+    # Greyed-out:   dimmed icon → np.min(gray) higher, np.mean(gray) high.
+    FOOD_ICON_MIN_THRESHOLD = 100   # max allowed min-brightness (0=black, 255=white)
+    FOOD_ICON_MEAN_THRESHOLD = 160  # max allowed mean-brightness
+
     def _dorm_has_food(self, button):
         gray = rgb2gray(self.image_crop(button, copy=False))
         # A greyed-out (exhausted) food slot has low contrast — the dimmed icon
         # lacks the dark areas of an active food icon. Check both min (dark
         # pixels exist) and mean (overall brightness is not too high).
-        if np.min(gray) > 100 or np.mean(gray) > 160:
+        if np.min(gray) > self.FOOD_ICON_MIN_THRESHOLD or np.mean(gray) > self.FOOD_ICON_MEAN_THRESHOLD:
             return False
         return True
 
