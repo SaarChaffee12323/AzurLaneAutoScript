@@ -180,12 +180,18 @@ class AzurLaneAutoScript:
             )
             exit(1)
         except RequestHumanTakeover:
+            task = getattr(self, '_current_task', 'unknown')
+            # Recovery tasks must never be paused — they ARE the recovery.
+            if task in ('Restart', 'goto_main', 'Alas'):
+                logger.critical(f'Request human takeover on critical task `{task}` — '
+                                f'will retry instead of pausing')
+                del_cached_property(self, 'config')
+                return False
             # Circuit breaker: don't crash, just skip this task
             logger.critical('Request human takeover — pausing task via circuit breaker')
             self.save_error_log()
             cooldown_hours = getattr(self.config, 'Error_CircuitBreakerCooldown', 2)
             until = datetime.now() + timedelta(hours=cooldown_hours)
-            task = getattr(self, '_current_task', 'unknown')
             self.config.task_disable(task)
             self._save_circuit_breaker(task, until)
             handle_notify(
@@ -518,7 +524,11 @@ class AzurLaneAutoScript:
             failed = deep_get(self.failure_record, keys=task, default=0)
             failed = 0 if success else failed + 1
             deep_set(self.failure_record, keys=task, value=failed)
-            if failed >= 3:
+            # Recovery tasks that must never be paused — pausing them causes
+            # cascading failures across all other tasks.
+            _CRITICAL_TASKS = {'Restart', 'goto_main', 'Alas'}
+
+            if failed >= 3 and task not in _CRITICAL_TASKS:
                 # Circuit breaker: auto-pause this task for cooldown_hours
                 # Other tasks continue running normally.
                 cooldown_hours = getattr(self.config, 'Error_CircuitBreakerCooldown', 2)
