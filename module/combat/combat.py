@@ -19,6 +19,24 @@ from module.ui.assets import BACK_ARROW, EXERCISE_CHECK, MUNITIONS_CHECK
 
 
 class Combat(Level, HPBalancer, Retirement, SubmarineCall, CombatAuto, CombatManual, AutoSearchHandler):
+    """Combat orchestration: in-battle UI handling + fleet management + auto-search.
+
+    Full MRO (method resolution order) — use this to trace where methods live:
+      Combat → Level → HPBalancer → Retirement → Enhancement → Dock →
+      Equipment → StorageHandler → StorageUI → QuickRetireSettingHandler →
+      UI → SubmarineCall → CombatAuto → CombatManual → AutoSearchHandler →
+      EnemySearchingHandler → InfoHandler → ModuleBase
+
+    Key parent responsibilities:
+      Level            — stage-level navigation (map movement, fleet selection)
+      HPBalancer       — low-HP ship balancing across fleets
+      Retirement       — auto-retire ships after battle
+      SubmarineCall    — submarine summoning during combat
+      CombatAuto       — auto-battle execution (click "Auto" etc.)
+      CombatManual     — manual battle controls (torpedo, airstrike)
+      AutoSearchHandler— auto-search mode state machine
+    """
+
     _automation_set_timer = Timer(1)
     battle_status_click_interval = 0
 
