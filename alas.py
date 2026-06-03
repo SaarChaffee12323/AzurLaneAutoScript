@@ -347,7 +347,8 @@ class AzurLaneAutoScript:
     opsi_cross_month = _task('module.campaign.os_run', 'OSCampaignRun', 'opsi_cross_month')
 
     # Campaign tasks: CampaignRun(config, device).run(name=..., folder=..., mode=...)
-    @staticmethod
+    # NOTE: _campaign is NOT @staticmethod — assigned to class attrs and
+    # called via self.main() / self.event() etc., so it needs self.
     def _campaign(self):
         from module.campaign.run import CampaignRun
         CampaignRun(config=self.config, device=self.device).run(
@@ -362,7 +363,6 @@ class AzurLaneAutoScript:
     c122_medium_leveling = _campaign
     c124_large_leveling = _campaign
 
-    @staticmethod
     def gems_farming(self):
         from module.campaign.gems_farming import GemsFarming
         GemsFarming(config=self.config, device=self.device).run(
