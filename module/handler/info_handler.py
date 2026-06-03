@@ -1,3 +1,4 @@
+import time
 from scipy import signal
 
 from module.base.base import ModuleBase
@@ -34,6 +35,22 @@ class InfoHandler(ModuleBase):
     """
     Info bar
     """
+
+    # Popup convergence detection: prevent infinite retry loops when a popup
+    # keeps reappearing (e.g., network reconnection dialog).
+    _popup_timestamps = []  # list of (name, timestamp)
+
+    def _popup_converged(self, name):
+        """Return True if this popup has been handled 5+ times in the last 10 seconds."""
+        now = time.time()
+        cutoff = now - 10
+        self._popup_timestamps = [(n, t) for n, t in self._popup_timestamps if t > cutoff]
+        self._popup_timestamps.append((name, now))
+        count = sum(1 for n, t in self._popup_timestamps if n == name)
+        if count >= 5:
+            logger.warning(f'Popup "{name}" handled {count} times in 10s — possible network loop')
+            return True
+        return False
 
     def info_bar_count(self):
         """
@@ -99,11 +116,17 @@ class InfoHandler(ModuleBase):
             POPUP_CONFIRM.name = POPUP_CONFIRM.name + '_' + name
             self.device.click(POPUP_CONFIRM)
             POPUP_CONFIRM.name = POPUP_CONFIRM.name[:-len(name) - 1]
+            if self._popup_converged(name):
+                from module.exception import GameStuckError
+                raise GameStuckError(f'Popup "{name}" convergence detected — possible network loop')
             return True
         if self.appear(POPUP_CONFIRM_WHITE, offset=offset, interval=interval):
             POPUP_CONFIRM_WHITE.name = POPUP_CONFIRM_WHITE.name + '_' + name
             self.device.click(POPUP_CONFIRM_WHITE)
             POPUP_CONFIRM_WHITE.name = POPUP_CONFIRM_WHITE.name[:-len(name) - 1]
+            if self._popup_converged(name):
+                from module.exception import GameStuckError
+                raise GameStuckError(f'Popup "{name}" convergence detected — possible network loop')
             return True
         return False
 
