@@ -256,7 +256,8 @@ class AzurLaneAutoScript:
             UI(self.config, device=self.device).ui_goto_main()
 
     # ---- Task dispatch factory ----
-    @staticmethod
+    # NOTE: _task is NOT @staticmethod — it is called at class-definition time
+    # to generate task methods, so it must be a plain callable, not a descriptor.
     def _task(module_path, class_name, method='run'):
         """Return a task dispatcher that imports and calls *class_name*.*method*."""
         def dispatch(self):
