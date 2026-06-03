@@ -464,31 +464,54 @@ class UI(InfoHandler):
     def ui_additional(self, get_ship=True):
         """
         Handle all annoying popups during UI switching.
+        Each handler is checked in order; the first to return True wins.
 
-        Args:
-            get_ship:
+        To add a new popup, either add a handler method and register it below,
+        or uncomment the relevant event-specific block.
         """
-        # Popups appear at page_os
-        # Has a popup_confirm variant
-        # so must take precedence
+        for handler in self._popup_handlers():
+            if handler(get_ship):
+                return True
+        return False
+
+    def _popup_handlers(self):
+        """Yields popup handler callables in priority order."""
+        yield self._popup_os           # page_os popups (must take precedence)
+        yield self._popup_confirm      # Research / lost-connection / generic confirm
+        yield self._popup_commission   # Urgent commission
+        yield self._popup_main         # page_main / page_reward popups
+        yield self._popup_story        # Story skip
+        yield self._popup_game_tips    # Game tips notification
+        yield self._popup_dorm         # Dorm info / feed / trophy
+        yield self._popup_meowfficer   # Meowfficer info / buy
+        yield self._popup_campaign     # Campaign preparation / withdraw
+        yield self._popup_login        # Login / maintenance
+        yield self._popup_mistaken     # Mistaken clicks (exercise prep, etc.)
+        yield self._popup_idle_white   # Idle page + ui_white switch
+
+    # ---- Individual popup handlers ----
+
+    def _popup_os(self, get_ship):
         if self.ui_page_os_popups():
             return True
 
-        # Research popup, lost connection popup
+    def _popup_confirm(self, get_ship):
         if self.handle_popup_confirm("UI_ADDITIONAL"):
             return True
+
+    def _popup_commission(self, get_ship):
         if self.handle_urgent_commission():
             return True
 
-        # Popups appear at page_main, page_reward
+    def _popup_main(self, get_ship):
         if self.ui_page_main_popups(get_ship=get_ship):
             return True
 
-        # Story
+    def _popup_story(self, get_ship):
         if self.handle_story_skip():
             return True
 
-        # Game tips
+    def _popup_game_tips(self, get_ship):
         # Event commission in Vacation Lane.
         # 2025.05.29 game tips that infos skin feature when you enter dock
         if self.appear(GAME_TIPS, offset=(30, 30), interval=2):
@@ -496,7 +519,7 @@ class UI(InfoHandler):
             self.device.click(GOTO_MAIN)
             return True
 
-        # Dorm popup
+    def _popup_dorm(self, get_ship):
         if self.appear(DORM_INFO, offset=(30, 30), similarity=0.75, interval=3):
             self.device.click(DORM_INFO)
             return True
@@ -505,7 +528,7 @@ class UI(InfoHandler):
         if self.appear_then_click(DORM_TROPHY_CONFIRM, offset=(30, 30), interval=3):
             return True
 
-        # Meowfficer popup
+    def _popup_meowfficer(self, get_ship):
         if self.appear_then_click(MEOWFFICER_INFO, offset=(30, 30), interval=3):
             self.interval_reset(GET_SHIP)
             return True
@@ -515,7 +538,7 @@ class UI(InfoHandler):
             self.interval_reset(GET_SHIP)
             return True
 
-        # Campaign preparation
+    def _popup_campaign(self, get_ship):
         if self.appear(MAP_PREPARATION, offset=(30, 30), interval=3) \
                 or self.appear(FLEET_PREPARATION, offset=(20, 50), interval=3) \
                 or self.appear(RAID_FLEET_PREPARATION, offset=(30, 30), interval=3):
@@ -526,14 +549,9 @@ class UI(InfoHandler):
         if self.appear_then_click(AUTO_SEARCH_REWARD, offset=(50, 50), interval=3):
             return True
         if self.appear(WITHDRAW, offset=(30, 30), interval=3):
-            # Poor wait here, to handle a game client bug after the game patch in 2022-04-07
-            # To re-produce this game bug (100% success):
-            # - Enter any stage, 12-4 for example
-            # - Stop and restart game
-            # - Run task `Main` in Alas
-            # - Alas switches to page_campaign and retreat from an existing stage
-            # - Game client freezes at page_campaign W12, clicking anywhere on the screen doesn't get responses
-            # - Restart game client again fix the issue
+            # Handle a game client bug after the game patch in 2022-04-07:
+            # entering a stage, restarting the game, then retreating causes a
+            # freeze. Waiting 2s before clicking WITHDRAW avoids this.
             logger.info("WITHDRAW button found, wait until map loaded to prevent bugs in game client")
             self.device.sleep(2)
             self.device.screenshot()
@@ -544,46 +562,25 @@ class UI(InfoHandler):
                 logger.warning("WITHDRAW button does not exist anymore")
                 self.interval_reset(WITHDRAW)
 
-        # Login
+    def _popup_login(self, get_ship):
         if self.appear_then_click(LOGIN_CHECK, offset=(30, 30), interval=3):
             return True
         if self.appear_then_click(MAINTENANCE_ANNOUNCE, offset=(30, 30), interval=3):
             return True
 
-        # Mistaken click
+    def _popup_mistaken(self, get_ship):
         if self.appear(EXERCISE_PREPARATION, interval=3):
             logger.info(f'UI additional: {EXERCISE_PREPARATION} -> {GOTO_MAIN}')
             self.device.click(GOTO_MAIN)
             return True
 
-        # RPG event (raid_20240328)
-        # if self.appear_then_click(RPG_STATUS_POPUP, offset=(30, 30), interval=3):
-        #     return True
-        # Hospital event (20250327)
-        # if self.appear_then_click(HOSIPITAL_CLUE_CHECK, offset=(20, 20), interval=2):
-        #     return True
-        # if self.appear_then_click(HOSPITAL_BATTLE_EXIT, offset=(20, 20), interval=2):
-        #     return True
-        # Neon city (coalition_20250626)
-        # FASHION (coalition_20260122) reuse NEONCITY
-        # if self.appear(NEONCITY_FLEET_PREPARATION, offset=(20, 20), interval=3):
-        #     logger.info(f'{NEONCITY_FLEET_PREPARATION} -> {NEONCITY_PREPARATION_EXIT}')
-        #     self.device.click(NEONCITY_PREPARATION_EXIT)
-        #     return True
-        # DATE A LANE (coalition_20251120)
-        # if self.appear_then_click(DAL_DIFFICULTY_EXIT, offset=(20, 20), interval=3):
-        #     return True
-
-        # Idle page
+    def _popup_idle_white(self, get_ship):
         if self.handle_idle_page():
             return True
-        # Switch on ui_white, no offset just color match
         if self.appear(MAIN_GOTO_MEMORIES_WHITE, interval=3):
             logger.info(f'UI additional: {MAIN_GOTO_MEMORIES_WHITE} -> {MAIN_TAB_SWITCH_WHITE}')
             self.device.click(MAIN_TAB_SWITCH_WHITE)
             return True
-
-        return False
 
     def handle_idle_page(self):
         """
