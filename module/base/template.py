@@ -273,7 +273,10 @@ class Template(Resource):
                 result += res
             result = np.array(result)
         else:
-            result = cv2.matchTemplate(image, self.image, cv2.TM_CCOEFF_NORMED)
+            template_image = self.image
+            if image.ndim == 2 and template_image.ndim == 3:
+                template_image = cv2.cvtColor(template_image, cv2.COLOR_BGR2GRAY)
+            result = cv2.matchTemplate(image, template_image, cv2.TM_CCOEFF_NORMED)
             result = np.array(np.where(result > similarity)).T[:, ::-1]
 
         # result: np.array([[x0, y0], [x1, y1], ...)
