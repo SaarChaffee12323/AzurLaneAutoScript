@@ -263,6 +263,11 @@ class Template(Resource):
         if self.is_gif:
             result = []
             for template in self.image:
+                # cv2.matchTemplate requires matching dimensions.
+                # If image is grayscale (2D) but template is color (3D),
+                # convert the template to grayscale.
+                if image.ndim == 2 and template.ndim == 3:
+                    template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
                 res = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
                 res = np.array(np.where(res > similarity)).T[:, ::-1].tolist()
                 result += res
