@@ -186,6 +186,17 @@ class Reward(UI):
         self.reward_side_navbar_ensure(upper=1)
         return self._reward_mission_collect()
 
+    def _reward_mission_daily(self):
+        """
+        Collects daily page mission rewards (e.g., 'do research once', 'feed dorm')
+        that are separate from the ALL page.
+
+        Returns:
+            bool, if handled
+        """
+        self.reward_side_navbar_ensure(upper=4)
+        return self._reward_mission_collect()
+
     def _reward_mission_weekly(self):
         """
         Collects weekly page mission rewards
@@ -242,6 +253,7 @@ class Reward(UI):
 
         if daily:
             self._reward_mission_all()
+            self._reward_mission_daily()
         if weekly:
             self._reward_mission_weekly()
 
