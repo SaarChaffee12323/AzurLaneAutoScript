@@ -349,22 +349,17 @@ class RewardDorm(UI):
             fill = 0
 
         FOOD_FILTER.load(self.config.Dorm_FeedFilter)
-        # First pass: use the best food that fits within remaining fill.
+        # Feed foods that fit within remaining fill, from largest to smallest.
+        fed = False
         for selected in FOOD_FILTER.apply(food):
             button = self._dorm_food.buttons[food.index(selected)]
             if selected.amount > 0 and fill > selected.feed:
                 count = min(fill // selected.feed, selected.amount)
                 self._dorm_feed_click(button=button, count=count)
                 return True
-
-        # Fallback: if no food fits (e.g., fill is low and all foods are
-        # larger than fill), feed the smallest available food at least once.
-        # Better to overfeed than leave ships starving.
-        for selected in reversed(FOOD_FILTER.apply(food)):
-            if selected.amount > 0:
-                button = self._dorm_food.buttons[food.index(selected)]
-                logger.info(f'No food fits remaining fill ({fill}), '
-                            f'feeding smallest available ({selected.feed}) once')
+            elif selected.amount > 0:
+                # Food is too large for remaining fill — try it anyway once.
+                logger.info(f'Food {selected.feed} larger than remaining fill ({fill}), feeding once')
                 self._dorm_feed_click(button=button, count=1)
                 return True
 
