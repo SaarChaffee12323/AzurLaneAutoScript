@@ -1,0 +1,25 @@
+# OCR correction rules for commission name detection.
+# Edit this file to add/change rules without touching Python code.
+
+# Exact string replacements applied in order
+replacements:
+  # English server
+  - from: "DALY"
+    to: "DAILY"
+  - from: "NVB"
+    to: "NYB"
+  - from: "PYEIN"
+    to: "VEIN"
+  - from: "YEIN"
+    to: "VEIN"
+  - from: "NB"
+    to: "BYB"
+  - from: "BW"
+    to: "BIW"
+  # Japanese server
+  - from: "鑑"
+    to: "艦"
+  - from: "盤"
+    to: "艦"
+  - from: "土蒙爾"
+    to: "土豪爾"

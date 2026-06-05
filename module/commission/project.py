@@ -54,6 +54,27 @@ class Commission:
     # Value: major_comm, daily_resource, urgent_cube, ...
     genre: str
     # Status of commission
+
+    _correction_rules = None
+
+    @classmethod
+    def _load_correction_rules(cls):
+        if cls._correction_rules is not None:
+            return cls._correction_rules
+        import yaml, os
+        path = os.path.join(os.path.dirname(__file__), 'correction_rules.yaml')
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                cls._correction_rules = yaml.safe_load(f)['replacements']
+        except Exception:
+            # Fallback to built-in rules
+            cls._correction_rules = [
+                {'from': 'DALY', 'to': 'DAILY'},
+                {'from': 'NVB', 'to': 'NYB'},
+                {'from': 'PYEIN', 'to': 'VEIN'},
+                {'from': 'YEIN', 'to': 'VEIN'},
+            ]
+        return cls._correction_rules
     # Value: finished, running, pending
     status: str
     # Duration to run this commission
@@ -104,11 +125,8 @@ class Commission:
         ocr = Ocr(button, lang='cnocr')
         self.button = button
         result = ocr.ocr(self.image).upper()
-        # DALY RESOURCE EXTRACTION -> DAILY RESOURCE EXTRACTION
-        result = result.replace('DALY', 'DAILY')
-        result = result.replace('NVB', 'NYB')
-        # PYEIN PROTECTION COMMISSION I
-        result = result.replace('PYEIN', 'VEIN').replace('YEIN', 'VEIN')
+        for rule in self._load_correction_rules():
+            result = result.replace(rule['from'], rule['to'])
         self.name = result
         self.genre = self.commission_name_parse(self.name)
 
@@ -154,8 +172,8 @@ class Commission:
         ocr = Ocr(button, letter=(201, 201, 201), lang='jp')
         self.button = button
         result = ocr.ocr(self.image).upper()
-        # NB装備輸送 -> NYB装備輸送
-        result = result.replace('NB', 'BYB').replace('BW', 'BIW')
+        for rule in self._load_correction_rules():
+            result = result.replace(rule['from'], rule['to'])
         self.name = result
         self.genre = self.commission_name_parse(self.name)
 
@@ -201,10 +219,8 @@ class Commission:
         ocr = Ocr(button, lang='tw', threshold=256)
         self.button = button
         result = ocr.ocr(self.image).upper()
-        # There no letter `艦` in training dataset
-        result = result.replace('鑑', '艦').replace('盤', '艦')
-        # 支援土蒙爾島
-        result = result.replace('土蒙爾', '土豪爾')
+        for rule in self._load_correction_rules():
+            result = result.replace(rule['from'], rule['to'])
         self.name = result
         self.genre = self.commission_name_parse(self.name)
 
