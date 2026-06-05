@@ -41,5 +41,8 @@ class CampaignWarArchives(CampaignRun, CampaignBase):
         return False
 
     def run(self, name=None, folder='campaign_main', mode='normal', total=0):
+        name = name or self.config.Campaign_Name
+        folder = folder if folder != 'campaign_main' else self.config.Campaign_Event
+        mode = mode or self.config.Campaign_Mode
         self.config.override(USE_DATA_KEY=True)
         super().run(name, folder, mode, total)
