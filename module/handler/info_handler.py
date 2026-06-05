@@ -41,13 +41,18 @@ class InfoHandler(ModuleBase):
     _popup_timestamps = []  # list of (name, timestamp)
 
     def _popup_converged(self, name):
-        """Return True if this popup has been handled 5+ times in the last 10 seconds."""
+        """Return True if this popup has been handled 10+ times in the last 10 seconds.
+
+        Threshold is 10: high enough to allow legitimate batch operations
+        (e.g., mail claims ~5 popups) but low enough to catch real network
+        reconnection loops (~1 per second).
+        """
         now = time.time()
         cutoff = now - 10
         self._popup_timestamps = [(n, t) for n, t in self._popup_timestamps if t > cutoff]
         self._popup_timestamps.append((name, now))
         count = sum(1 for n, t in self._popup_timestamps if n == name)
-        if count >= 5:
+        if count >= 10:
             logger.warning(f'Popup "{name}" handled {count} times in 10s — possible network loop')
             return True
         return False
