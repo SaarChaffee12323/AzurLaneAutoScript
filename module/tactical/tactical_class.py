@@ -588,7 +588,6 @@ class RewardTacticalClass(Dock):
                 break
 
     @staticmethod
-    @staticmethod
     def check_skill_selected(button, image):
         area = button.area
         check_area = tuple([area[0], area[3] + 2, area[2], area[3] + 4])
