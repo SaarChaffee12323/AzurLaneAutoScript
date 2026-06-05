@@ -182,7 +182,7 @@ class Book:
         Args:
             image (np.ndarray): Screenshot
         """
-        return TacticalClass.check_skill_selected(self.button, image)
+        return RewardTacticalClass.check_skill_selected(self.button, image)
 
     def __str__(self):
         # Example: Red_T3_Exp
