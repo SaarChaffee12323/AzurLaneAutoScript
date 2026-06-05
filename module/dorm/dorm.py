@@ -353,7 +353,7 @@ class RewardDorm(UI):
         fed = False
         for selected in FOOD_FILTER.apply(food):
             button = self._dorm_food.buttons[food.index(selected)]
-            if selected.amount > 0 and fill > selected.feed:
+            if selected.amount > 0 and fill >= selected.feed:
                 count = min(fill // selected.feed, selected.amount)
                 self._dorm_feed_click(button=button, count=count)
                 return True
