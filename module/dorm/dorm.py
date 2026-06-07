@@ -350,18 +350,28 @@ class RewardDorm(UI):
 
         FOOD_FILTER.load(self.config.Dorm_FeedFilter)
         # Feed foods that fit within remaining fill, from largest to smallest.
-        fed = False
         for selected in FOOD_FILTER.apply(food):
-            button = self._dorm_food.buttons[food.index(selected)]
-            if selected.amount > 0 and fill >= selected.feed:
+            if selected.amount <= 0:
+                continue
+            idx = food.index(selected)
+            button = self._dorm_food.buttons[idx]
+            if fill >= selected.feed:
                 count = min(fill // selected.feed, selected.amount)
                 self._dorm_feed_click(button=button, count=count)
-                return True
-            elif selected.amount > 0:
+            else:
                 # Food is too large for remaining fill — try it anyway once.
                 logger.info(f'Food {selected.feed} larger than remaining fill ({fill}), feeding once')
                 self._dorm_feed_click(button=button, count=1)
+
+            # Verify food was actually consumed before reporting success.
+            # A click may fail to register (e.g. due to game lag or UI change),
+            # causing an infinite loop if we return True without checking.
+            new_food, _ = self.dorm_food_get()
+            if idx < len(new_food) and new_food[idx].amount < selected.amount:
                 return True
+            else:
+                logger.warning(f'Dorm feed {selected} had no effect, food amount unchanged, trying next food')
+                continue
 
         return False
 
